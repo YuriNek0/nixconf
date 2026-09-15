@@ -17,7 +17,10 @@ in
       ];
 
       users.users.${username} = {
-        extraGroups = [ "wireshark" ];
+        extraGroups = [
+          "wireshark"
+          "uinput"
+        ];
       };
 
       home-manager.users.${username} = {
@@ -121,12 +124,19 @@ in
 
       # Steam requires x86_64 userspace support.
       programs.steam = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
-        # the app that maximizes my retention
         enable = true;
         extraCompatPackages = with pkgs; [
           # Let ProtonUp manages it
           # proton-ge-bin
         ];
+      };
+
+      # Sunshine
+      services.sunshine = {
+        enable = true;
+        autoStart = false;
+        capSysAdmin = false;
+        openFirewall = true;
       };
     };
 }
