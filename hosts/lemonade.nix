@@ -43,6 +43,8 @@
         # USB
         xpad
         usb
+
+        misc
       ])
       # Import host profiles.
       ++ (with self.modules.profiles; [

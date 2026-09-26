@@ -1,3 +1,4 @@
+# Not a big fan of AI slop but I don't have much time and effort writing stuff for simple fixes.
 _: {
   flake.modules.users.yuri.home.git-commit-helpers =
     {
@@ -8,7 +9,7 @@ _: {
       ...
     }:
     let
-      model = "openai/gpt-5.3-codex-spark";
+      model = "openai/gpt-6-luna";
       agent = "OpenTechnicalWriter";
 
       hasOacOption = lib.hasAttrByPath [ "programs" "opencode" "oac" "enable" ] options;

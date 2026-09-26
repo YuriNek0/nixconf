@@ -7,82 +7,83 @@
       pkgs,
       ...
     }:
-      let
-        homeAssistantHost = "ha.sherbet.lan";
-        argononeLogLevel = 4; # WARNING
-        argononeSettings = {
-          fanTemp0 = 55;
-          fanSpeed0 = 10;
-          fanTemp1 = 60;
-          fanSpeed1 = 55;
-          fanTemp2 = 65;
-          fanSpeed2 = 100;
-          hysteresis = 3;
-        };
-        argononePackage = pkgs.callPackage (inputs.argononed + "/OS/nixos/pkg.nix") {
-          logLevel = argononeLogLevel;
-        };
-        argononeFanConfig = lib.concatStringsSep " " (
-          map toString (
-            with argononeSettings;
-            [
-              fanSpeed0
-              fanSpeed1
-              fanSpeed2
-              fanTemp0
-              fanTemp1
-              fanTemp2
-              hysteresis
-            ]
-          )
-        );
-        users = self.lib.getHostUsers self.modules.users [
-          "yuri"
-          "deployer"
-        ];
+    let
+      homeAssistantHost = "ha.sherbet.lan";
+      argononeLogLevel = 4; # WARNING
+      argononeSettings = {
+        fanTemp0 = 55;
+        fanSpeed0 = 10;
+        fanTemp1 = 60;
+        fanSpeed1 = 55;
+        fanTemp2 = 65;
+        fanSpeed2 = 100;
+        hysteresis = 3;
+      };
+      argononePackage = pkgs.callPackage (inputs.argononed + "/OS/nixos/pkg.nix") {
+        logLevel = argononeLogLevel;
+      };
+      argononeFanConfig = lib.concatStringsSep " " (
+        map toString (
+          with argononeSettings;
+          [
+            fanSpeed0
+            fanSpeed1
+            fanSpeed2
+            fanTemp0
+            fanTemp1
+            fanTemp2
+            hysteresis
+          ]
+        )
+      );
+      users = self.lib.getHostUsers self.modules.users [
+        "yuri"
+        "deployer"
+      ];
       inherit (users) yuri deployer;
     in
     {
       nixpkgs.hostPlatform = lib.mkForce "aarch64-linux";
 
-      imports =
-        [
-          inputs.nixos-hardware.nixosModules.raspberry-pi-4
-        ]
-        ++ (with self.modules.features; [
-          home-manager
-          sshd
-          network
-          nginx
-          no-root-passwd
-          msgraph-health-sentinel
-          anthropic-readings
-          home-assistant
-          otbr
+      imports = [
+        inputs.nixos-hardware.nixosModules.raspberry-pi-4
+      ]
+      ++ (with self.modules.features; [
+        home-manager
+        sshd
+        network
+        nginx
+        no-root-passwd
+        msgraph-health-sentinel
+        anthropic-readings
+        home-assistant
+        otbr
 
-          # Ram Optimisation
-          earlyoom
-          zram
+        # Ram Optimisation
+        earlyoom
+        zram
 
-          # I2C
-          i2c
+        # I2C
+        i2c
 
-          # Sudo Agent
-          rssh
+        # Sudo Agent
+        rssh
 
-          # Disable Wifi (Software)
-          disable-wifi
-        ])
-        ++ (with self.modules.profiles; [
-          base
-          server
-        ])
-        ++ (with yuri.profiles; [
-          base
-        ])
-        ++ (with deployer.profiles; [
-          base
-        ]);
+        # Disable Wifi (Software)
+        disable-wifi
+
+        misc
+      ])
+      ++ (with self.modules.profiles; [
+        base
+        server
+      ])
+      ++ (with yuri.profiles; [
+        base
+      ])
+      ++ (with deployer.profiles; [
+        base
+      ]);
 
       networking.hostName = "Yuri-Sherbet";
 
