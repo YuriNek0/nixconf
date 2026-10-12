@@ -3,13 +3,17 @@
   flake.modules.profiles.desktop =
     { lib, pkgs, ... }:
     {
-      imports = with self.modules.features; [
-        niri
-        dms-shell
-        plymouth
-        fonts
-        dms-greeter
-      ];
+      imports =
+        with self.modules.features;
+        [
+          niri
+          dms-shell
+          plymouth
+          fonts
+          dms-greeter
+          sunshine
+          steam
+        ];
 
       environment.systemPackages =
         with pkgs;

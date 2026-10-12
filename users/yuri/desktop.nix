@@ -60,7 +60,12 @@ in
             # Full Helix Config
             helix-full-ext
           ])
-          ++ lib.optionals pkgs.stdenv.hostPlatform.isx86_64 (with user.home; [ sectools ]);
+          ++ lib.optionals pkgs.stdenv.hostPlatform.isx86_64 (
+            with user.home;
+            [
+              sectools
+            ]
+          );
 
         home.isDesktopProfile = true;
         home.packages =
@@ -120,23 +125,6 @@ in
             rime-ice
           ];
         };
-      };
-
-      # Steam requires x86_64 userspace support.
-      programs.steam = lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
-        enable = true;
-        extraCompatPackages = with pkgs; [
-          # Let ProtonUp manages it
-          # proton-ge-bin
-        ];
-      };
-
-      # Sunshine
-      services.sunshine = {
-        enable = true;
-        autoStart = false;
-        capSysAdmin = false;
-        openFirewall = true;
       };
     };
 }
