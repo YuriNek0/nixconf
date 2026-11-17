@@ -16,6 +16,11 @@ Nix flake repository for composing hosts, features, and user environments.
 - `lib/` — composition and naming helpers
 - `.opencode/` — Configs and Contexts for AI
 
+## Host Notes
+
+- [Yuri-Sherbet: Raspberry Pi 4 mainline kernel](hosts/sherbet.md) — official-cache
+  kernel verification, Argon ONE support, and first-boot hardware checks.
+
 ## Use of AI
 
 This repo is compatible with [OpenAgentsControl](https://github.com/darrenhinde/OpenAgentsControl) framework.

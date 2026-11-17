@@ -19,9 +19,26 @@
         fanSpeed2 = 100;
         hysteresis = 3;
       };
-      argononePackage = pkgs.callPackage (inputs.argononed + "/OS/nixos/pkg.nix") {
-        logLevel = argononeLogLevel;
-      };
+      argononePackage =
+        (pkgs.callPackage (inputs.argononed + "/OS/nixos/pkg.nix") {
+          logLevel = argononeLogLevel;
+        }).overrideAttrs
+          (old: {
+            # Resolve the CPU sensor and SoC GPIO controller at service startup;
+            # mainline does not guarantee hwmon0 or gpiochip0 enumeration order.
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace src/argononed.c src/argonone_config.c \
+                --replace-fail '/dev/gpiochip0' '/run/argononed/gpiochip'
+              substituteInPlace src/argononed.c \
+                --replace-fail '"/sys/class/hwmon/hwmon%d/temp1_input", Configuration.extra.flags.SET_HWMON_NUM' \
+                               '"/run/argononed/cpu-temperature"'
+              substituteInPlace src/argonone_config.c \
+                --replace-fail '/sys/class/hwmon/hwmon0/temp1_input' '/run/argononed/cpu-temperature' \
+                --replace-fail '/sys/class/hwmon/hwmon1/temp1_input' '/run/argononed/cpu-temperature' \
+                --replace-fail '"Using /sys/class/hwmon/hwmon%d/temp1_input", conf->extra.flags.SET_HWMON_NUM' \
+                               '"Using /run/argononed/cpu-temperature"'
+            '';
+          });
       argononeFanConfig = lib.concatStringsSep " " (
         map toString (
           with argononeSettings;
@@ -45,47 +62,50 @@
     {
       nixpkgs.hostPlatform = lib.mkForce "aarch64-linux";
 
-      imports = [
-        inputs.nixos-hardware.nixosModules.raspberry-pi-4
-      ]
-      ++ (with self.modules.features; [
-        home-manager
-        sshd
-        network
-        nginx
-        no-root-passwd
-        msgraph-health-sentinel
-        anthropic-readings
-        home-assistant
-        otbr
+      imports =
+        (with self.modules.features; [
+          raspberry-pi-4-mainline
+          home-manager
+          sshd
+          network
+          nginx
+          protonmail-bridge
+          no-root-passwd
+          home-assistant
+          otbr
 
-        # Ram Optimisation
-        earlyoom
-        zram
+          # Ram Optimisation
+          earlyoom
+          zram
 
-        # I2C
-        i2c
+          # I2C
+          i2c
 
-        # Sudo Agent
-        rssh
+          # Sudo Agent
+          rssh
 
-        # Disable Wifi (Software)
-        disable-wifi
-
-        misc
-      ])
-      ++ (with self.modules.profiles; [
-        base
-        server
-      ])
-      ++ (with yuri.profiles; [
-        base
-      ])
-      ++ (with deployer.profiles; [
-        base
-      ]);
+          misc
+        ])
+        ++ (with self.modules.profiles; [
+          base
+          server
+        ])
+        ++ (with yuri.profiles; [
+          base
+        ])
+        ++ (with deployer.profiles; [
+          base
+        ]);
 
       networking.hostName = "Yuri-Sherbet";
+
+      # Run Bridge as yuri at boot and after logout.
+      users.users.yuri.linger = true;
+      users.users.yuri.extraGroups = [
+        "gpio"
+        "dialout"
+      ];
+      systemd.user.services.protonmail-bridge.unitConfig.ConditionUser = "yuri";
 
       time.timeZone = "Australia/Sydney";
       i18n.defaultLocale = "en_AU.UTF-8";
@@ -117,9 +137,6 @@
         };
       };
 
-      # NRF52840 USB-UART dongle (CDC ACM serial)
-      boot.kernelModules = [ "cdc_acm" ];
-
       fileSystems = {
         "/" = {
           device = "/dev/disk/by-label/NIXOS_SD";
@@ -137,35 +154,40 @@
         };
       };
 
-      hardware.raspberry-pi."4" = {
-        bluetooth.enable = true;
-        fkms-3d.enable = true;
-        apply-overlays-dtmerge.enable = true;
-      };
-
-      hardware.raspberry-pi.configtxt.settings.all.dtparam = lib.mkAfter [ "i2c_arm=on" ];
-
-      hardware.deviceTree.filter = "bcm2711-rpi-4*.dtb";
-
       # argononed daemon defaults (fan curve: 10%@55°C, 55%@60°C, 100%@65°C, hysteresis 3°C)
       environment.systemPackages = [ argononePackage ];
 
       hardware.deviceTree.overlays = [
         {
-          name = "argonone";
-          dtboFile = "${argononePackage}/share/argonone/boot/overlays/argonone.dtbo";
-        }
-        {
-          name = "argonone-enable-overlay";
+          name = "argonone-mainline";
           dtsText = ''
             /dts-v1/;
             /plugin/;
             / {
-              compatible = "brcm,bcm2711";
+              compatible = "raspberrypi,4-model-b";
               fragment@0 {
-                target-path = "/argonone";
+                target-path = "/";
                 __overlay__ {
-                  argonone-cfg = /bits/ 8 <${argononeFanConfig}>;
+                  argonone {
+                    label = "argonone";
+                    argonone-cfg = /bits/ 8 <${argononeFanConfig}>;
+                    argonone-ver = [00 01 00];
+                    argonone-conf = "/etc/argononed.conf";
+                    // I2C bus 1, USE_SYSFS temperature flag; power button enabled.
+                    argonone-extra = [01 04];
+                  };
+                };
+              };
+              fragment@1 {
+                target = <&gpio>;
+                __overlay__ {
+                  pinctrl-names = "default";
+                  pinctrl-0 = <&argonone_button_pins>;
+                  argonone_button_pins: argonone-button-pins {
+                    brcm,pins = <4>;
+                    brcm,function = <0>;
+                    brcm,pull = <1>;
+                  };
                 };
               };
             };
@@ -176,15 +198,52 @@
       systemd = {
         services.argononed = {
           enable = true;
-          after = [ "multi-user.target" ];
+          wants = [ "systemd-udev-settle.service" ];
+          after = [
+            "systemd-modules-load.service"
+            "systemd-udev-settle.service"
+          ];
           wantedBy = [ "multi-user.target" ];
           description = "Argon ONE Fan and Button Daemon Service";
+
+          preStart = ''
+            while read -r chip label _; do
+              if [ "$label" = '[pinctrl-bcm2711]' ]; then
+                ln -sfn "/dev/''${chip##*/}" /run/argononed/gpiochip
+              fi
+            done < <(${pkgs.libgpiod}/bin/gpiodetect)
+            for zone in /sys/class/thermal/thermal_zone*; do
+              if [ -r "$zone/type" ] && [ "$(< "$zone/type")" = cpu-thermal ]; then
+                ln -sfn "$zone/temp" /run/argononed/cpu-temperature
+              fi
+            done
+            test -c /run/argononed/gpiochip
+            test -r /run/argononed/cpu-temperature
+            test -c /dev/i2c-1
+          '';
 
           serviceConfig = {
             Type = "forking";
             ExecStart = "${argononePackage}/sbin/argononed";
             PIDFile = "/run/argononed.pid";
+            RuntimeDirectory = "argononed";
             Restart = "on-failure";
+          };
+        };
+
+        # Clear the previous rfkill/NetworkManager radio state left by disable-wifi.
+        services.enable-wifi-on-boot = {
+          description = "Enable Raspberry Pi Wi-Fi";
+          wants = [ "NetworkManager.service" ];
+          after = [
+            "NetworkManager.service"
+            "systemd-rfkill.service"
+          ];
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = "${pkgs.networkmanager}/bin/nmcli radio wifi on";
+            RemainAfterExit = true;
           };
         };
 
